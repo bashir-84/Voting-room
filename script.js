@@ -1,124 +1,73 @@
-const SUPABASE_URL = 'https://wmtonpilbyxcbhmiafzj.supabase.co';
-const KEY = 'sb_publishable_BxrMGHnc3oCfME-WUJQxcw_PqUlXZgq';
-const db = supabase.createClient(SUPABASE_URL, KEY, { auth: { persistSession: true, autoRefreshToken: true } });
-const $ = id => document.getElementById(id);
-let roomId = sessionStorage.getItem('voting_room_id');
-let current = null;
-let busy = false;
-let pollId;
-let previousStatus = '';
-
-function notice(message, error = false) {
-  const box = $('notice'); box.hidden = !message; box.textContent = message;
-  box.classList.toggle('error', error);
+'use strict';
+const SUPABASE_PROJECT_URL='https://wmtonpilbyxcbhmiafzj.supabase.co';
+const SUPABASE_PUBLIC_KEY='sb_publishable_BxrMGHnc3oCfME-WUJQxcw_PqUlXZgq';
+const $=id=>document.getElementById(id);
+let db, current=null, roomId=null, busy=false, polling=false, editing=false, picks=[], baseRevision=0, activeRound=null, observedRevision=0, clockOffset=0, connected=false, settingsRoundId=null;
+const number=n=>new Intl.NumberFormat('fa-IR',{maximumFractionDigits:1}).format(n);
+const normalize=value=>value.trim().replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c))).replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).toUpperCase();
+function element(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
+function announce(text,error=false){$('notice').hidden=!text;$('notice').textContent=text;$('notice').classList.toggle('error',error);}
+function connection(ok){connected=ok;$('connection').textContent=ok?'● متصل به اتاق':'○ ارتباط تأیید نشده';}
+function errorText(e){if(e?.code==='PGRST202'||/rv_action.*schema cache|Could not find.*rv_action/i.test(e?.message||''))return 'راه‌اندازی نسخهٔ جدید هنوز انجام نشده؛ مالک پروژه باید فایل setup-v2.sql را یک بار در SQL Editor سوپابیس اجرا کند.';if(/Failed to fetch|NetworkError|fetch failed|timeout/i.test(e?.message||''))return 'ارتباط با سرور قطع است. ثبت یا تغییر رأی هنوز تأیید نشده؛ پس از اتصال، رأی واقعی دوباره دریافت می‌شود.';return e?.message||String(e);}
+async function guest(){if(!db)throw new Error('فایل ارتباط با سرور بارگذاری نشده است؛ صفحه را دوباره باز کنید.');const {data,error}=await db.auth.getSession();if(error)throw error;if(!data.session){const result=await db.auth.signInAnonymously();if(result.error)throw result.error;}}
+async function rpc(action,payload={}){const {data,error}=await db.rpc('rv_action',{p_action:action,p_payload:payload});if(error)throw error;return data;}
+async function act(work){if(busy)return;busy=true;document.body.setAttribute('aria-busy','true');announce('');document.querySelectorAll('button').forEach(b=>b.disabled=true);try{await guest();await work();}catch(e){announce(errorText(e),true);if(/fetch|network|timeout/i.test(e.message||''))connection(false);}finally{busy=false;document.body.removeAttribute('aria-busy');document.querySelectorAll('button').forEach(b=>b.disabled=false);if(current)render();}}
+function mountSettings(target,values={}){target.replaceChildren($('settings-template').content.cloneNode(true));const max=target.querySelector('[data-field=max_choices]');for(let i=1;i<=50;i++){const opt=document.createElement('option');opt.value=i;opt.textContent=i===1?'۱ گزینه':`${number(i)} گزینه`;max.append(opt);}for(const [key,val] of Object.entries(values)){const f=target.querySelector(`[data-field=${key}]`);if(!f)continue;if(f.type==='checkbox')f.checked=val;else f.value=key==='labels'?(val||[]).join('\n'):val;}
+ const update=()=>{const isOptions=target.querySelector('[data-field=kind]').value==='options';target.querySelector('[data-group=options]').hidden=!isOptions;target.querySelector('[data-group=self]').hidden=isOptions;};target.querySelector('[data-field=kind]').addEventListener('change',update);update();}
+function readSettings(target){const val=key=>target.querySelector(`[data-field=${key}]`);const settings={title:val('title').value.trim(),kind:val('kind').value,max_choices:Number(normalize(val('max_choices').value)),duration_minutes:Number(normalize(val('duration_minutes').value||'0')),allow_self:val('allow_self').checked,privacy:val('privacy').value,labels:val('labels').value.split('\n').map(s=>s.trim()).filter(Boolean)};
+ if(!settings.title)throw new Error('موضوع رأی‌گیری را بنویسید.');if(!Number.isInteger(settings.max_choices)||settings.max_choices<1||settings.max_choices>50)throw new Error('تعداد انتخاب نامعتبر است.');if(!Number.isInteger(settings.duration_minutes)||settings.duration_minutes<0||settings.duration_minutes>1440)throw new Error('زمان باید بین صفر و ۱۴۴۰ دقیقه باشد.');if(settings.kind==='options'){if(settings.labels.length<2||settings.labels.length>50)throw new Error('بین ۲ تا ۵۰ گزینه بنویسید؛ هر گزینه در یک خط.');if(new Set(settings.labels).size!==settings.labels.length)throw new Error('گزینه‌های تکراری را حذف کنید.');if(settings.labels.some(s=>s.length>100))throw new Error('هر گزینه حداکثر ۱۰۰ نویسه باشد.');if(settings.max_choices>settings.labels.length)throw new Error('حداکثر انتخاب نباید بیشتر از تعداد گزینه‌ها باشد.');}return settings;}
+function setMode(create){$('create-form').hidden=!create;$('join-form').hidden=create;$('show-create').classList.toggle('active',create);$('show-join').classList.toggle('active',!create);$('show-create').setAttribute('aria-pressed',String(create));$('show-join').setAttribute('aria-pressed',String(!create));}
+function acceptState(state){if(!state?.id)return;const r=state.round;const newRound=activeRound!==r.id;const justOpened=current?.round?.status!=='open'&&r.status==='open';
+ if(newRound||justOpened){activeRound=r.id;editing=r.my_revision===0;picks=[...r.my_choices];baseRevision=r.my_revision;}
+ else if(r.my_revision!==observedRevision){if(editing&&observedRevision!==0)announce('رأی ثبت‌شده تغییر کرده است؛ آخرین نسخهٔ سرور نمایش داده می‌شود.');editing=false;picks=[...r.my_choices];baseRevision=r.my_revision;}
+ else if(!editing){picks=[...r.my_choices];baseRevision=r.my_revision;}
+ if(r.status!=='open')editing=false;
+ observedRevision=r.my_revision;clockOffset=new Date(state.server_time).getTime()-Date.now();current=state;roomId=state.id;
+ localStorage.setItem('rv2-last-room',JSON.stringify({id:state.id,code:state.code}));$('home').hidden=true;$('room').hidden=false;connection(true);render();
+ if(state.accepted===false)announce(state.message||'درخواست پذیرفته نشد.',true);
 }
-function messageFor(error) {
-  const raw = error?.message || String(error);
-  if (/Failed to fetch|NetworkError|fetch failed/i.test(raw)) return 'ارتباط با سرور برقرار نشد. اینترنت یا دسترسی به Supabase را بررسی کنید.';
-  if (/duplicate key|unique constraint/i.test(raw)) return 'رأی شما قبلاً ثبت شده یا کد اتاق تکراری شده است.';
-  return raw;
+async function refresh(){if(!roomId||busy||polling)return;polling=true;const requested=roomId;try{const state=await rpc('state',{room_id:requested});if(roomId===requested)acceptState(state);}catch(e){connection(false);announce(errorText(e),true);}finally{polling=false;}}
+function labelFor(candidate){return candidate.label+(candidate.member_id?` · ${candidate.member_id.slice(0,6)}`:'');}
+function render(){if(!current)return;const {round:r}=current;const open=r.status==='open';const waiting=r.status==='waiting';const ended=r.status==='finished'||r.status==='cancelled';
+ $('room-code').textContent=current.code;$('round-number').textContent=`دور ${number(r.number)}`;$('round-status').textContent={waiting:'در انتظار شروع',open:'رأی‌گیری باز است',finished:'پایان‌یافته',cancelled:'لغوشده'}[r.status];$('round-title').textContent=r.title;
+ const tags=[r.kind==='people'?'انتخاب افراد':'انتخاب گزینه‌ها',r.max_choices===1?'تک‌گزینه‌ای':`تا ${number(r.max_choices)} انتخاب`,r.privacy==='anonymous'?'رأی ناشناس':'با نام بعد از پایان',r.duration_minutes?`${number(r.duration_minutes)} دقیقه`:'بدون محدودیت زمانی'];if(r.kind==='people')tags.push(r.allow_self?'رأی به خود مجاز':'رأی به خود ممنوع');$('rules').replaceChildren(...tags.map(t=>element('span','',t)));
+ $('privacy-note').textContent=r.privacy==='anonymous'?'انتخاب افراد برای اعضا و میزبان برنامه نمایش داده نمی‌شود؛ حتی بعد از پایان.':'انتخاب‌ها تا پایان مخفی‌اند؛ پس از پایان، نام رأی‌دهندگان و انتخاب‌هایشان به اعضای اتاق نشان داده می‌شود.';
+ $('member-count').textContent=`${number(current.members.length)} نفر`;$('members').replaceChildren(...current.members.map(m=>{const e=element('span','member',`${m.name} · ${m.id.slice(0,6)}`);e.append(element('small','',`${m.id===current.my_member_id?' — شما':''}${m.is_host?' — میزبان':''}`));return e;}));
+ $('waiting').hidden=!waiting;$('voting').hidden=!open;$('results-panel').hidden=r.status!=='finished';$('cancelled').hidden=r.status!=='cancelled';$('host-waiting').hidden=!current.is_host;$('host-open').hidden=!current.is_host;$('new-round').hidden=!(ended&&current.is_host);
+ $('waiting-message').textContent=current.is_host?'لینک یا کد را به دوستان بدهید. تنظیمات را بررسی کنید و پس از حضور حداقل دو نفر، رأی‌گیری را شروع کنید.':'میزبان پس از ورود اعضا، رأی‌گیری را شروع می‌کند. تنظیمات بالا برای همه یکسان است.';
+ $('draft-options').replaceChildren();if(waiting&&r.kind==='options'){const options=element('div','members');r.labels.forEach((s,i)=>options.append(element('span','member',`${number(i+1)}. ${s}`)));$('draft-options').append(options);}
+ $('start').disabled=busy||current.members.length<2;
+ if(open)renderBallot();if(r.status==='finished')renderResults($('results'),r);
+ $('history').hidden=!current.history.length;$('history-content').replaceChildren(...current.history.map(old=>{const e=element('details','history-item');e.append(element('summary','',`دور ${number(old.number)} — ${old.title}${old.status==='cancelled'?' (لغوشده)':''}`));const body=element('div');if(old.status==='finished')renderResults(body,old);else body.append(element('p','muted','این دور لغو شد.'));e.append(body);return e;}));tick();}
+function renderBallot(){const r=current.round;const canEdit=r.eligible&&editing&&connected;const saved=r.my_revision>0;
+ $('vote-progress').textContent=`${number(r.voter_count)} نفر از ${number(r.eligible_count)} نفر`;$('late-member').hidden=r.eligible;$('vote-instruction').textContent=`از ۱ تا ${number(r.max_choices)} گزینه انتخاب کنید. انتخاب موقت فقط پس از تأیید سرور ثبت می‌شود.`;
+ $('choices').replaceChildren(...r.candidates.map(c=>{const blocked=r.kind==='people'&&!r.allow_self&&c.member_id===current.my_member_id;const e=element('label',`choice${picks.includes(c.id)?' selected':''}${blocked?' blocked':''}`);const input=document.createElement('input');input.type=r.max_choices===1?'radio':'checkbox';input.name='ballot-choice';input.value=c.id;input.checked=picks.includes(c.id);input.disabled=!canEdit||blocked||busy;input.addEventListener('change',()=>{if(r.max_choices===1)picks=[c.id];else if(input.checked){if(picks.length>=r.max_choices){input.checked=false;announce(`حداکثر ${number(r.max_choices)} انتخاب مجاز است.`,true);return;}picks.push(c.id);}else picks=picks.filter(id=>id!==c.id);renderBallot();});const text=element('span','',labelFor(c)+(blocked?' — رأی به خود ممنوع':''));e.append(input,text);return e;}));
+ $('ballot-state').textContent=!r.eligible?'':editing?`${number(picks.length)} انتخاب موقت${saved?' — رأی قبلی تا ثبت موفق تغییر، معتبر است.':''}`:'✓ رأی ثبت‌شدهٔ شما. تا پایان می‌توانید آن را تغییر دهید.';
+ const actions=$('vote-actions');actions.replaceChildren();if(!r.eligible)return;
+ if(editing){const save=element('button','primary',saved?'ثبت تغییر':'ثبت رأی');save.disabled=busy||picks.length===0||!connected;save.addEventListener('click',submitVote);actions.append(save);if(saved){const cancel=element('button','secondary','انصراف از تغییر');cancel.addEventListener('click',()=>{editing=false;picks=[...r.my_choices];baseRevision=r.my_revision;renderBallot();});actions.append(cancel);}}
+ else{const edit=element('button','primary','تغییر رأی');edit.disabled=busy||!connected;edit.addEventListener('click',()=>{editing=true;baseRevision=r.my_revision;picks=[...r.my_choices];renderBallot();});actions.append(edit);}}
+async function submitVote(){if(!picks.length)return;const request={room_id:roomId,round_id:current.round.id,choices:[...picks],expected_revision:baseRevision,request_id:crypto.randomUUID()};await act(async()=>{$('ballot-state').textContent='در حال ثبت…';try{const state=await rpc('vote',request);editing=false;acceptState(state);if(state.accepted!==false)announce('رأی شما با تأیید سرور ثبت شد.');}catch(e){try{const actual=await rpc('state',{room_id:roomId});acceptState(actual);}catch{}throw e;}});}
+function renderResults(target,r){target.replaceChildren();const rows=r.results||[];const voters=r.voter_count;const total=r.eligible_count;const stats=element('div','stats');[[voters,'رأی‌دهنده'],[Math.max(0,total-voters),'رأی‌نداده'],[`${number(total?voters/total*100:0)}٪`,'مشارکت']].forEach(([value,title])=>{const box=element('div','stat',title);box.prepend(element('strong','',typeof value==='number'?number(value):value));stats.append(box);});target.append(stats);
+ if(!voters){target.append(element('p','muted','هیچ رأیی ثبت نشده؛ فرد یا گزینه‌ای با بیشترین رأی وجود ندارد.'));}
+ else{const most=Math.max(...rows.map(x=>x.count));const winners=rows.filter(x=>x.count===most);target.append(element('p','winner',`بیشترین رأی${winners.length>1?' (مساوی)':''}: ${winners.map(labelFor).join('، ')}`));}
+ rows.forEach(row=>{const box=element('div','result');const top=element('div','row');const pct=voters?row.count/voters*100:0;top.append(element('span','',labelFor(row)),element('strong','',`${number(row.count)} رأی · ${number(pct)}٪`));const bar=element('div','bar');const fill=element('div','fill');fill.style.width=`${pct}%`;bar.append(fill);box.append(top,bar);target.append(box);});target.append(element('p','help',`درصدها از تعداد رأی‌دهندگان محاسبه می‌شوند.${r.max_choices>1?' در رأی چندگزینه‌ای، جمع درصدها می‌تواند بیش از ۱۰۰٪ باشد. مجموع انتخاب‌های ثبت‌شده: '+number(r.selection_count)+'.':''} رأی ندادن، رأی ممتنع محسوب نمی‌شود.`));
+ if(r.privacy==='named'&&r.named_votes){target.append(element('h3','','چه کسی چه انتخابی کرد؟'));r.named_votes.forEach(v=>{const names=v.choices.map(id=>rows.find(c=>c.id===id)).filter(Boolean).map(labelFor);target.append(element('div','named-row',`${v.name} · ${v.member_id.slice(0,6)} ← ${names.join('، ')}`));});}}
+function tick(){if(!current)return;const r=current.round;const show=r.status==='open'&&r.ends_at;$('timer').hidden=!show;if(!show)return;const seconds=Math.max(0,Math.ceil((new Date(r.ends_at).getTime()-Date.now()-clockOffset)/1000));$('timer').textContent=seconds?`زمان باقی‌مانده: ${number(Math.floor(seconds/60))} دقیقه و ${number(seconds%60)} ثانیه`:'زمان تمام شد؛ دریافت نتیجه از سرور…';}
+function goHome(){roomId=null;current=null;activeRound=null;observedRevision=0;localStorage.removeItem('rv2-last-room');$('room').hidden=true;$('home').hidden=false;history.replaceState(null,'',location.pathname);announce('');}
+function attach(){mountSettings($('create-settings'),{title:'',kind:'people',max_choices:1,allow_self:true,privacy:'anonymous',duration_minutes:0,labels:[]});
+ $('show-create').onclick=()=>setMode(true);$('show-join').onclick=()=>setMode(false);
+ $('create-form').onsubmit=e=>{e.preventDefault();act(async()=>{const name=$('display-name').value.trim();if(!name)throw new Error('نام خود را بنویسید.');const settings=readSettings($('create-settings'));const code=normalize($('custom-code').value);if(code&&!/^[A-Z0-9]{4,12}$/.test(code))throw new Error('کد باید ۴ تا ۱۲ رقم یا حرف انگلیسی باشد.');const state=await rpc('create',{name,code,settings});acceptState(state);});};
+ $('join-form').onsubmit=e=>{e.preventDefault();act(async()=>{const name=$('display-name').value.trim();const code=normalize($('join-code').value);if(!name||!code)throw new Error('نام و کد اتاق را وارد کنید.');acceptState(await rpc('join',{name,code}));});};
+ $('copy').onclick=()=>act(async()=>{const link=new URL(location.href);link.search='';link.hash='';link.searchParams.set('room',current.code);try{await navigator.clipboard.writeText(link.href);announce('لینک دعوت کپی شد.');}catch{announce(`کپی خودکار ممکن نشد؛ کد اتاق را به دوستان بدهید: ${current.code}`);}});
+ $('start').onclick=()=>act(async()=>{acceptState(await rpc('start',{room_id:roomId,round_id:current.round.id}));});
+ const finish=(action)=>{const text=action==='finish'?'با پایان رأی‌گیری، ثبت و تغییر رأی بسته می‌شود و نتیجه نمایش داده می‌شود. ادامه می‌دهید؟':'این دور لغو شود؟ نتیجهٔ نهایی اعلام نخواهد شد.';if(!confirm(text))return;act(async()=>acceptState(await rpc(action,{room_id:roomId,round_id:current.round.id})));};
+ $('finish').onclick=()=>finish('finish');$('cancel-open').onclick=$('cancel-waiting').onclick=()=>finish('cancel');
+ $('new-round').onclick=()=>act(async()=>{acceptState(await rpc('new_round',{room_id:roomId,round_id:current.round.id}));announce('دور جدید ساخته شد؛ پیش از شروع می‌توانید تنظیمات را تغییر دهید.');});
+ $('edit-settings').onclick=()=>{settingsRoundId=current.round.id;mountSettings($('edit-fields'),current.round);$('settings-dialog').showModal();};
+ $('close-settings').onclick=$('cancel-settings').onclick=()=>$('settings-dialog').close();
+ $('settings-form').onsubmit=e=>{e.preventDefault();act(async()=>{const settings=readSettings($('edit-fields'));acceptState(await rpc('settings',{room_id:roomId,round_id:settingsRoundId,settings}));$('settings-dialog').close();announce('تنظیمات ذخیره شد.');});};$('home-button').onclick=goHome;
+ window.addEventListener('offline',()=>{connection(false);if(current)render();announce('اینترنت قطع است؛ رأی ثبت‌شده روی سرور محفوظ است.',true);});window.addEventListener('online',()=>refresh());document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
+ const invite=new URLSearchParams(location.search).get('room');if(invite){$('join-code').value=normalize(invite);setMode(false);}else{try{const last=JSON.parse(localStorage.getItem('rv2-last-room'));if(last?.id)act(async()=>{const state=await rpc('state',{room_id:last.id});acceptState(state);});}catch{}}
+ setInterval(refresh,3000);setInterval(tick,1000);
 }
-async function action(work) {
-  if (busy) return; busy = true; notice('');
-  document.querySelectorAll('button').forEach(b => b.disabled = true);
-  try { await work(); } catch (e) { notice(messageFor(e), true); }
-  finally { busy = false; document.querySelectorAll('button').forEach(b => b.disabled = false); }
-}
-async function ensureGuest() {
-  const { data: existing, error: getError } = await db.auth.getSession();
-  if (getError) throw getError;
-  if (existing.session) return;
-  const { error } = await db.auth.signInAnonymously();
-  if (error) throw error;
-}
-async function call(name, args) {
-  const { data, error } = await db.rpc(name, args);
-  if (error) throw error;
-  return data;
-}
-function enter(id) {
-  roomId = id; sessionStorage.setItem('voting_room_id', id);
-  $('home').hidden = true; $('room').hidden = false;
-  if (!pollId) pollId = setInterval(() => { if (!busy && roomId) refresh().catch(e => notice(messageFor(e), true)); }, 2500);
-  return refresh();
-}
-async function refresh() {
-  const requested = roomId;
-  const data = await call('get_voting_room', { p_room_id: requested });
-  if (requested !== roomId) return;
-  current = data;
-  render(data);
-  if (previousStatus && previousStatus !== data.status) notice(data.status === 'finished' ? 'رأی‌گیری تمام شد و نتیجه آماده است.' : 'رأی‌گیری شروع شد.');
-  previousStatus = data.status;
-}
-function render(data) {
-  const { players, status, votes } = data;
-  $('room-code').textContent = data.code;
-  $('status').textContent = { waiting: 'در انتظار شروع', voting: 'رأی‌گیری در جریان است', finished: 'پایان یافته' }[status];
-  $('progress').textContent = status === 'waiting' ? `${players.length} نفر` : `${data.vote_count} از ${players.length} رأی`;
-  $('players').replaceChildren(...players.map(p => {
-    const row = document.createElement('div'); row.className = 'person';
-    const name = document.createElement('span'); name.textContent = p.name;
-    const mark = document.createElement('small'); mark.textContent = p.id === data.my_player_id ? 'شما' : '';
-    row.append(name, mark); return row;
-  }));
-  $('waiting').hidden = status !== 'waiting'; $('voting').hidden = status !== 'voting'; $('finished').hidden = status !== 'finished';
-  $('start').hidden = !data.is_host;
-  $('waiting-text').textContent = data.is_host ? 'کد یا لینک اتاق را به دوستانت بده؛ با حضور دست‌کم دو نفر بازی را شروع کن.' : 'منتظر بمان تا میزبان رأی‌گیری را شروع کند.';
-  $('finish').hidden = !data.is_host;
-  const voted = sessionStorage.getItem(`voted_${data.room_id}`) === 'yes';
-  $('my-vote').hidden = !voted;
-  $('choices').replaceChildren(...(voted ? [] : players.map(p => {
-    const button = document.createElement('button'); button.className = 'choice'; button.textContent = p.name;
-    button.addEventListener('click', () => {
-      if (!confirm(`رأی به «${p.name}» ثبت شود؟ امکان تغییر آن نیست.`)) return;
-      action(async () => {
-        await call('cast_voting_vote', { p_room_id: roomId, p_target_id: p.id });
-        sessionStorage.setItem(`voted_${roomId}`, 'yes'); await refresh();
-      });
-    }); return button;
-  })));
-  if (status === 'finished') {
-    const list = [...players].map(p => ({ player: p, supporters: (votes || []).filter(v => v.target_id === p.id).map(v => v.voter_name) }));
-    list.sort((a, b) => b.supporters.length - a.supporters.length);
-    $('results').replaceChildren(...list.map(item => {
-      const row = document.createElement('div'); row.className = 'result';
-      const line = document.createElement('strong');
-      const person = document.createElement('span'); person.textContent = item.player.name;
-      const count = document.createElement('span'); count.textContent = `${item.supporters.length} رأی`;
-      line.append(person, count);
-      const detail = document.createElement('p'); detail.textContent = item.supporters.length ? `رأی‌دهندگان: ${item.supporters.join('، ')}` : 'کسی به او رأی نداد';
-      row.append(line, detail); return row;
-    }));
-  }
-}
-function leave() {
-  roomId = null; current = null; previousStatus = '';
-  sessionStorage.removeItem('voting_room_id'); clearInterval(pollId); pollId = null;
-  $('room').hidden = true; $('home').hidden = false; notice('');
-  history.replaceState(null, '', location.pathname);
-}
-$('create').addEventListener('click', () => action(async () => {
-  const name = $('name').value.trim(); if (!name) throw new Error('اول اسم خودت را بنویس.');
-  await ensureGuest(); const result = await call('create_voting_room', { player_name: name });
-  await enter(result.room_id);
-}));
-$('join').addEventListener('click', () => action(async () => {
-  const name = $('name').value.trim(); const code = $('code').value.trim();
-  if (!name || !code) throw new Error('اسم و کد اتاق را وارد کن.');
-  await ensureGuest(); const result = await call('join_voting_room', { room_code: code, player_name: name });
-  await enter(result.room_id);
-}));
-$('start').addEventListener('click', () => action(async () => { await call('start_voting', { p_room_id: roomId }); await refresh(); }));
-$('finish').addEventListener('click', () => {
-  if (!confirm('رأی‌گیری را تمام کنیم و نتیجه را به همه نشان بدهیم؟')) return;
-  action(async () => { await call('finish_voting', { p_room_id: roomId }); await refresh(); });
-});
-$('copy').addEventListener('click', () => action(async () => {
-  const link = `${location.origin}${location.pathname}?room=${encodeURIComponent(current.code)}`;
-  await navigator.clipboard.writeText(link); notice('لینک دعوت کپی شد.');
-}));
-$('leave').addEventListener('click', leave);
-const inviteCode = new URLSearchParams(location.search).get('room');
-if (inviteCode) $('code').value = inviteCode.toUpperCase();
-if (roomId) ensureGuest().then(() => enter(roomId)).catch(() => leave());
+try{if(!window.supabase)throw new Error('فایل supabase.js پیدا نشد؛ هر چهار فایل سایت را با هم بارگذاری کنید.');db=window.supabase.createClient(SUPABASE_PROJECT_URL,SUPABASE_PUBLIC_KEY,{auth:{persistSession:true,autoRefreshToken:true}});attach();}catch(e){announce(errorText(e),true);}
