@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a2b">
+  <title>اتاق رأی‌گیری</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="supabase.js"></script>
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header><span class="eyebrow">بازی گروهی</span><h1>اتاق رأی‌گیری</h1><p>با یک کد وارد اتاق شوید، به یکی از اعضا رأی بدهید و نتیجه را با هم ببینید.</p></header>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <section id="home" class="panel">
+      <h2>شروع بازی</h2>
+      <label for="name">اسم شما</label><input id="name" maxlength="30" autocomplete="nickname" placeholder="مثلاً سارا">
+      <button id="create" class="primary">ساخت اتاق تازه</button>
+      <div class="divider">یا ورود به اتاق دوستان</div>
+      <label for="code">کد اتاق</label><input id="code" maxlength="8" dir="ltr" inputmode="text" autocapitalize="characters" placeholder="کد ۸ حرفی">
+      <button id="join" class="secondary">ورود با کد</button>
+    </section>
+    <section id="room" hidden>
+      <div class="panel room-head"><div><span class="eyebrow">کد دعوت</span><strong id="room-code" class="code" dir="ltr"></strong><span id="status" class="status"></span></div><button id="copy" class="small">کپی لینک دعوت</button></div>
+      <div class="panel"><div class="section-head"><h2>اعضای اتاق</h2><span id="progress"></span></div><div id="players" class="players"></div></div>
+      <div id="waiting" class="panel" hidden><h2>اتاق آماده است</h2><p id="waiting-text"></p><button id="start" class="primary" hidden>شروع رأی‌گیری</button></div>
+      <div id="voting" class="panel" hidden><h2>به چه کسی رأی می‌دهی؟</h2><p>یک نفر را انتخاب کن. رأی پس از ثبت قابل تغییر نیست.</p><div id="choices" class="choices"></div><p id="my-vote" class="muted" hidden>رأی شما ثبت شد؛ منتظر بقیه باشید.</p><button id="finish" class="secondary" hidden>پایان رأی‌گیری و نمایش نتیجه</button></div>
+      <div id="finished" class="panel" hidden><h2>نتیجهٔ رأی‌گیری</h2><div id="results"></div><p class="muted">برای بازی دوباره، یک اتاق تازه بسازید.</p></div>
+      <button id="leave" class="link-button">بازگشت به صفحهٔ اول</button>
+    </section>
+    <footer>نتیجهٔ رأی‌ها تا پایان رأی‌گیری پنهان می‌ماند. اتصال هر چند ثانیه به‌روز می‌شود.</footer>
+  </main>
+</body>
+</html>
