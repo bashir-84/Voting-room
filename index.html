@@ -1,35 +1,34 @@
 <!doctype html>
-<html lang="fa" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101a2b">
-  <title>اتاق رأی‌گیری</title>
-  <link rel="stylesheet" href="style.css">
-  <script defer src="supabase.js"></script>
-  <script defer src="script.js"></script>
-</head>
-<body>
-  <main class="shell">
-    <header><span class="eyebrow">بازی گروهی</span><h1>اتاق رأی‌گیری</h1><p>با یک کد وارد اتاق شوید، به یکی از اعضا رأی بدهید و نتیجه را با هم ببینید.</p></header>
-    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
-    <section id="home" class="panel">
-      <h2>شروع بازی</h2>
-      <label for="name">اسم شما</label><input id="name" maxlength="30" autocomplete="nickname" placeholder="مثلاً سارا">
-      <button id="create" class="primary">ساخت اتاق تازه</button>
-      <div class="divider">یا ورود به اتاق دوستان</div>
-      <label for="code">کد اتاق</label><input id="code" maxlength="8" dir="ltr" inputmode="text" autocapitalize="characters" placeholder="کد ۸ حرفی">
-      <button id="join" class="secondary">ورود با کد</button>
-    </section>
-    <section id="room" hidden>
-      <div class="panel room-head"><div><span class="eyebrow">کد دعوت</span><strong id="room-code" class="code" dir="ltr"></strong><span id="status" class="status"></span></div><button id="copy" class="small">کپی لینک دعوت</button></div>
-      <div class="panel"><div class="section-head"><h2>اعضای اتاق</h2><span id="progress"></span></div><div id="players" class="players"></div></div>
-      <div id="waiting" class="panel" hidden><h2>اتاق آماده است</h2><p id="waiting-text"></p><button id="start" class="primary" hidden>شروع رأی‌گیری</button></div>
-      <div id="voting" class="panel" hidden><h2>به چه کسی رأی می‌دهی؟</h2><p>یک نفر را انتخاب کن. رأی پس از ثبت قابل تغییر نیست.</p><div id="choices" class="choices"></div><p id="my-vote" class="muted" hidden>رأی شما ثبت شد؛ منتظر بقیه باشید.</p><button id="finish" class="secondary" hidden>پایان رأی‌گیری و نمایش نتیجه</button></div>
-      <div id="finished" class="panel" hidden><h2>نتیجهٔ رأی‌گیری</h2><div id="results"></div><p class="muted">برای بازی دوباره، یک اتاق تازه بسازید.</p></div>
-      <button id="leave" class="link-button">بازگشت به صفحهٔ اول</button>
-    </section>
-    <footer>نتیجهٔ رأی‌ها تا پایان رأی‌گیری پنهان می‌ماند. اتصال هر چند ثانیه به‌روز می‌شود.</footer>
-  </main>
-</body>
-</html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0c1826"><title>هم‌رأی | اتاق رأی‌گیری</title><link rel="stylesheet" href="style.css"><script defer src="supabase.js"></script><script defer src="script.js"></script></head>
+<body><main class="shell">
+<header class="mast"><div class="brand"><span class="brand-icon" aria-hidden="true">✓</span><div><strong>هم‌رأی</strong><small>یک اتاق، یک تصمیم مشترک</small></div></div><span id="connection" class="connection">آمادهٔ اتصال</span></header>
+<div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+<section id="home"><div class="intro"><span class="eyebrow">تصمیم‌گیری با هم</span><h1>رأی شما،<br><em>انتخاب جمع.</em></h1><p>به اعضای گروه رأی بدهید یا از بین گزینه‌های میزبان انتخاب کنید؛ ساده، شفاف و با قواعد مشخص.</p></div>
+<div class="panel home-panel"><div class="tabs"><button id="show-create" class="active" aria-pressed="true">ساخت اتاق</button><button id="show-join" aria-pressed="false">ورود به اتاق</button></div>
+<label for="display-name">نام شما</label><input id="display-name" maxlength="30" autocomplete="nickname" placeholder="نامی که در اتاق دیده می‌شود">
+<form id="create-form"><label for="custom-code">کد دلخواه اتاق <small>اختیاری</small></label><input id="custom-code" dir="ltr" maxlength="12" placeholder="1234" autocomplete="off"><p class="help">۴ تا ۱۲ رقم یا حرف انگلیسی؛ خالی بگذارید تا یک کد چهاررقمی بسازیم.</p><div id="create-settings"></div><button class="primary" type="submit">ساخت اتاق و دعوت دوستان <span aria-hidden="true">←</span></button></form>
+<form id="join-form" hidden><label for="join-code">کد اتاق</label><input id="join-code" dir="ltr" maxlength="12" placeholder="مثلاً 1234" autocomplete="off"><button class="primary" type="submit">ورود به اتاق ←</button></form>
+</div><div class="features"><span>✓ بدون ثبت‌نام اجباری</span><span>✓ ویرایش رأی تا پایان</span><span>✓ مناسب موبایل</span></div></section>
+<section id="room" hidden>
+<div class="panel room-top"><div><span class="eyebrow">کد اتاق</span><strong id="room-code" class="room-code" dir="ltr"></strong></div><button id="copy" class="secondary compact">کپی لینک دعوت</button></div>
+<div class="panel"><div class="row"><span id="round-number" class="pill"></span><span id="round-status" class="status"></span></div><h1 id="round-title" class="round-title"></h1><div id="rules" class="rule-tags"></div><p id="privacy-note" class="help"></p><div id="timer" class="timer" hidden></div></div>
+<div class="panel"><div class="row"><h2>اعضای اتاق</h2><span id="member-count" class="muted"></span></div><div id="members" class="members"></div></div>
+<div id="waiting" class="panel" hidden><h2>پیش از شروع</h2><p id="waiting-message" class="muted"></p><div id="draft-options"></div><div id="host-waiting" hidden><div class="two"><button id="edit-settings" class="secondary">ویرایش تنظیمات</button><button id="start" class="primary">شروع رأی‌گیری</button></div><button id="cancel-waiting" class="text-button danger">لغو این دور</button></div></div>
+<div id="voting" class="panel" hidden><div class="row"><h2>انتخاب شما</h2><span id="vote-progress" class="muted"></span></div><p id="vote-instruction" class="help"></p><div id="late-member" class="notice" hidden>شما پس از شروع این دور وارد شده‌اید؛ از دور بعد می‌توانید شرکت کنید.</div><div id="choices" class="choices"></div><div id="ballot-state" class="ballot-state"></div><div id="vote-actions" class="two"></div><div id="host-open" class="host-actions" hidden><button id="finish" class="secondary">پایان رأی‌گیری و نمایش نتیجه</button><button id="cancel-open" class="text-button danger">لغو این دور</button></div></div>
+<div id="results-panel" class="panel" hidden><h2>نتیجهٔ نهایی</h2><div id="results"></div></div>
+<div id="cancelled" class="panel" hidden><h2>این دور لغو شد</h2><p class="muted">نتیجه یا فردی با بیشترین رأی اعلام نمی‌شود.</p></div>
+<button id="new-round" class="primary" hidden>دور جدید با همین اعضا</button>
+<details id="history" class="panel" hidden><summary>دورهای گذشته</summary><div id="history-content"></div></details>
+<button id="home-button" class="text-button">بازگشت به صفحهٔ اول</button><p class="help center">بازگشت به صفحهٔ اول، عضویت یا رأی ثبت‌شده را حذف نمی‌کند.</p>
+</section>
+<footer>هر عضویت یک برگهٔ رأی دارد. ورود از مرورگر یا دستگاه دیگر می‌تواند عضویت تازه‌ای بسازد.</footer>
+</main>
+<dialog id="settings-dialog"><form id="settings-form"><div class="row"><h2>تنظیمات این دور</h2><button id="close-settings" type="button" class="text-button" aria-label="بستن تنظیمات">✕</button></div><div id="edit-fields"></div><div class="two"><button id="cancel-settings" class="secondary" type="button">انصراف</button><button class="primary" type="submit">ذخیرهٔ تنظیمات</button></div><p class="help">پس از شروع، تنظیمات و گزینه‌های این دور قفل می‌شوند.</p></form></dialog>
+<template id="settings-template">
+<label>موضوع رأی‌گیری<input data-field="title" maxlength="160" required placeholder="مثلاً انتخاب نمایندهٔ گروه"></label>
+<label>نوع اتاق<select data-field="kind"><option value="people">رأی‌گیری به افرادِ اتاق</option><option value="options">رأی‌گیری به گزینه‌های دلخواه</option></select></label>
+<div data-group="options" hidden><label>گزینه‌ها — هر گزینه در یک خط<textarea data-field="labels" rows="5" placeholder="سینما&#10;کافه&#10;گردش"></textarea></label><p class="help">بین ۲ تا ۵۰ گزینهٔ متفاوت؛ هر گزینه حداکثر ۱۰۰ نویسه.</p></div>
+<div class="two fields"><label>حداکثر انتخاب هر نفر<select data-field="max_choices"></select></label><label>زمان رأی‌گیری<input data-field="duration_minutes" type="number" min="0" max="1440" value="0" inputmode="numeric"></label></div><p class="help">زمان به دقیقه؛ صفر یعنی بدون محدودیت. هر نفر از یک تا سقف تعیین‌شده انتخاب می‌کند.</p>
+<label data-group="self" class="check"><input type="checkbox" data-field="allow_self" checked> رأی به خود مجاز باشد</label>
+<label>محرمانگی رأی‌ها<select data-field="privacy"><option value="anonymous">ناشناس — فقط شمارش نهایی</option><option value="named">با نام — نمایش انتخاب افراد بعد از پایان</option></select></label><p class="help">در هر دو حالت، انتخاب دیگران و نتیجهٔ موقت تا پایان پنهان است. ناشناس‌بودن در برابر اعضا و میزبان برنامه است، نه مدیر فنی پایگاه داده.</p>
+</template></body></html>
